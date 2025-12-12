@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       # 1. Setup Environment
       - name: Build with Buildozer
@@ -20,7 +20,7 @@ jobs:
 
       # 2. Upload the APK
       - name: Upload APK
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4  # <--- This was fixed from v2 to v4
         with:
           name: package
           path: bin/*.apk
