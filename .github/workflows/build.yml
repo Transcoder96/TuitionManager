@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04    # <--- THIS IS THE FIX
 
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +20,7 @@ jobs:
 
       # 2. Upload the APK
       - name: Upload APK
-        uses: actions/upload-artifact@v4  # <--- This was fixed from v2 to v4
+        uses: actions/upload-artifact@v4
         with:
           name: package
           path: bin/*.apk
