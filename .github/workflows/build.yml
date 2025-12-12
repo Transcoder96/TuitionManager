@@ -5,20 +5,61 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04    # <--- THIS IS THE FIX
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Setup Environment
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      # 1. Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          command: buildozer android debug
-          buildozer_version: master
+          python-version: '3.10'
 
-      # 2. Upload the APK
+      # 2. Install Dependencies (The "Heavy Lifting")
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            build-essential \
+            git \
+            python3-dev \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libportmidi-dev \
+            libswscale-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            zlib1g-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libtinfo5 \
+            cmake \
+            libffi-dev \
+            libssl-dev \
+            zip \
+            unzip \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config
+
+      # 3. Install Buildozer
+      - name: Install Buildozer
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.36
+
+      # 4. Build the APK
+      - name: Build with Buildozer
+        run: |
+          # Automatically accept the license
+          yes | buildozer android debug
+
+      # 5. Upload the APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
