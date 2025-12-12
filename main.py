@@ -12,7 +12,7 @@ from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.list import MDList, TwoLineAvatarIconListItem, IconRightWidget, ThreeLineListItem, ImageLeftWidget
 from kivymd.uix.scrollview import MDScrollView
-from kivymd.uix.button import MDRaisedButton, MDFloatingActionButton, MDIconButton, MDRoundFlatButton, MDFlatButton, MDTextButton
+from kivymd.uix.button import MDRaisedButton, MDFloatingActionButton, MDIconButton, MDRoundFlatButton, MDFlatButton, MDRectangleFlatButton
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.label import MDLabel
 from kivymd.uix.selectioncontrol import MDCheckbox
@@ -25,11 +25,32 @@ from kivy.utils import platform
 from kivy.core.window import Window
 from kivy.clock import Clock
 
-# --- NOTIFICATIONS SETUP ---
-try:
-    from plyer import notification
-except ImportError:
-    notification = None # Handle if user hasn't installed plyer yet
+# --- PERMISSIONS & NOTIFICATION SETUP ---
+# This block asks for permission to read files and send notifications on Android
+if platform == "android":
+    try:
+        from android.permissions import request_permissions, Permission
+        from plyer import notification
+        
+        request_permissions([
+            Permission.READ_EXTERNAL_STORAGE, 
+            Permission.WRITE_EXTERNAL_STORAGE,
+            Permission.POST_NOTIFICATIONS, 
+            Permission.SCHEDULE_EXACT_ALARM 
+        ])
+    except Exception as e:
+        # Fallback if on PC or Pydroid gives a weird error
+        print(f"Permission Error (Ignored): {e}")
+        try:
+            from plyer import notification
+        except:
+            notification = None
+else:
+    # Desktop
+    try:
+        from plyer import notification
+    except:
+        notification = None
 
 # --- DATABASE SETUP ---
 DB_NAME = 'tuition_v19_final.db'
@@ -66,7 +87,7 @@ def init_db():
     conn.close()
 
 # --- REMINDER LOGIC ---
-def schedule_class_reminders():
+def schedule_class_reminders(*args):
     """Checks every minute if a class is 30 mins away"""
     if not notification:
         return
@@ -99,16 +120,15 @@ def schedule_class_reminders():
                     try:
                         class_dt = datetime.strptime(t_str, "%H:%M")
                     except ValueError:
-                        continue # Skip invalid time formats
+                        continue 
                 
-                # Combine with today's date
+                # Create date object for TODAY with the class time
                 class_full_dt = datetime.combine(now.date(), class_dt.time())
                 
-                # Reminder time = Class Time - 30 minutes
+                # Reminder is 30 mins before
                 reminder_time = class_full_dt - timedelta(minutes=30)
                 
                 # Check if we are in the exact minute of the reminder
-                # (now >= reminder AND now < reminder + 1 min)
                 if reminder_time <= now < (reminder_time + timedelta(minutes=1)):
                     notification.notify(
                         title=f"Class in 30 Mins!",
@@ -116,10 +136,9 @@ def schedule_class_reminders():
                         app_name="Tuition Manager",
                         timeout=10
                     )
-                    toast(f"Reminder: {student_name} in 30 mins")
                     
             except Exception as e:
-                print(f"Reminder Error: {e}")
+                print(f"Reminder Logic Error: {e}")
                 
     except Exception as e:
         print(f"DB Error in Reminders: {e}")
@@ -243,7 +262,7 @@ class AddEditScreen(MDScreen):
         self.file_manager = MDFileManager(
             exit_manager=self.exit_manager,
             select_path=self.select_path,
-            preview=False, # Preview disabled to prevent Pydroid crashes
+            preview=False, 
             ext=[".png", ".jpg", ".jpeg"] 
         )
 
@@ -253,20 +272,22 @@ class AddEditScreen(MDScreen):
             self.load_existing_data()
 
     def open_file_manager(self):
-        # Open Pydroid storage root
-        path = "/storage/emulated/0/"
-        if not os.path.exists(path):
-            path = "." 
+        path = "."
+        if platform == "android":
+             # Pydroid safe path
+            path = "/storage/emulated/0/"
+            if not os.path.exists(path):
+                path = "."
         self.file_manager.show(path)
 
     def select_path(self, path):
-        # Copy file to app folder so we don't lose access
+        # COPY FILE to app folder (Important!)
         try:
             app_dir = os.path.dirname(os.path.abspath(__file__))
             dest_dir = os.path.join(app_dir, "student_photos")
             if not os.path.exists(dest_dir): os.makedirs(dest_dir)
             
-            filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}{os.path.splitext(path)[1]}"
             dest_path = os.path.join(dest_dir, filename)
             
             copyfile(path, dest_path)
@@ -275,7 +296,7 @@ class AddEditScreen(MDScreen):
             toast("Photo Saved")
         except Exception as e:
             self.selected_photo_path = path # Fallback
-            self.ids.lbl_photo.text = "Photo Selected (Linked)"
+            self.ids.lbl_photo.text = "Photo Linked"
             
         self.exit_manager()
 
@@ -297,9 +318,11 @@ class AddEditScreen(MDScreen):
         if res: 
             self.ids.name_field.text = res[0]
             self.ids.fee_field.text = res[1] if res[1] else ""
-            if res[2]:
+            if res[2] and os.path.exists(res[2]):
                 self.selected_photo_path = res[2]
                 self.ids.lbl_photo.text = "Photo Selected"
+            else:
+                 self.ids.lbl_photo.text = "No photo selected"
         
         c.execute("SELECT subject, day_name, class_time FROM schedules WHERE student_id=?", (self.student_id,))
         rows = c.fetchall()
@@ -356,6 +379,7 @@ class AddEditScreen(MDScreen):
                                   (sid, subject, day, time))
         conn.commit()
         conn.close()
+        toast("Saved!")
         self.manager.current = 'list'
 
     def cancel(self):
@@ -622,7 +646,7 @@ class TuitionManagerApp(MDApp):
         ae_layout.add_widget(sub_scroll)
         
         plus_box = MDBoxLayout(adaptive_height=True)
-        # SAFE BUTTON COLOR
+        # Safe button for Pydroid
         plus_box.add_widget(MDFlatButton(text="+ Add Subject", theme_text_color="Custom", text_color=(0, 0.5, 0.5, 1), on_release=lambda x: ae_scr.add_subject_block()))
         ae_layout.add_widget(plus_box)
         
@@ -664,11 +688,11 @@ class TuitionManagerApp(MDApp):
         act_box.add_widget(MDRoundFlatButton(text="EDIT", icon="pencil", on_release=lambda x: det_scr.go_edit()))
         d_layout.add_widget(act_box)
 
-        # --- SMART CALENDAR CARD (ADAPTIVE) ---
+        # --- SMART CALENDAR CARD (ADAPTIVE HEIGHT) ---
         cal_card = MDCard(
             orientation="vertical", 
             size_hint_y=None, 
-            adaptive_height=True, # Fixed: Grows to fit buttons
+            adaptive_height=True,
             padding=dp(8), 
             size_hint_x=0.92,
             pos_hint={'center_x': 0.5},
@@ -676,7 +700,7 @@ class TuitionManagerApp(MDApp):
         )
         cal_card.add_widget(MDLabel(text="Attendance (This Month)", bold=True, size_hint_y=None, height=dp(20), halign="center"))
         
-        # 5 cols for clear, readable buttons
+        # 5 Columns for better button size
         det_scr.ids["cal_grid"] = MDGridLayout(cols=5, adaptive_height=True, spacing=dp(5), pos_hint={'center_x': 0.5})
         cal_card.add_widget(det_scr.ids["cal_grid"])
         
@@ -702,7 +726,7 @@ class TuitionManagerApp(MDApp):
         return sm
 
     def switch_to_add(self, sm):
-        # THIS IS THE FUNCTION THAT WAS MISSING
+        # THIS was the missing function in your previous attempt
         screen = sm.get_screen('add_edit')
         screen.mode = "add"
         screen.ids.name_field.text = "" 
