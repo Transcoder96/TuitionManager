@@ -26,7 +26,6 @@ from kivy.core.window import Window
 from kivy.clock import Clock
 
 # --- PERMISSIONS & NOTIFICATION SETUP ---
-# This block asks for permission to read files and send notifications on Android
 if platform == "android":
     try:
         from android.permissions import request_permissions, Permission
@@ -39,21 +38,19 @@ if platform == "android":
             Permission.SCHEDULE_EXACT_ALARM 
         ])
     except Exception as e:
-        # Fallback if on PC or Pydroid gives a weird error
         print(f"Permission Error (Ignored): {e}")
         try:
             from plyer import notification
         except:
             notification = None
 else:
-    # Desktop
     try:
         from plyer import notification
     except:
         notification = None
 
 # --- DATABASE SETUP ---
-DB_NAME = 'tuition_v19_final.db'
+DB_NAME = 'tuition_v20_final.db'
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -88,7 +85,6 @@ def init_db():
 
 # --- REMINDER LOGIC ---
 def schedule_class_reminders(*args):
-    """Checks every minute if a class is 30 mins away"""
     if not notification:
         return
 
@@ -97,9 +93,8 @@ def schedule_class_reminders(*args):
         c = conn.cursor()
         
         now = datetime.now()
-        current_day = now.strftime("%a")  # Mon, Tue...
+        current_day = now.strftime("%a")
         
-        # Get today's classes
         c.execute("""
             SELECT s.name, sch.subject, sch.class_time 
             FROM schedules sch 
@@ -112,7 +107,6 @@ def schedule_class_reminders(*args):
         
         for student_name, subject, class_time in classes:
             try:
-                # Parse time (supports "4:00 PM" and "16:00")
                 t_str = class_time.strip().upper()
                 try:
                     class_dt = datetime.strptime(t_str, "%I:%M %p")
@@ -122,13 +116,9 @@ def schedule_class_reminders(*args):
                     except ValueError:
                         continue 
                 
-                # Create date object for TODAY with the class time
                 class_full_dt = datetime.combine(now.date(), class_dt.time())
-                
-                # Reminder is 30 mins before
                 reminder_time = class_full_dt - timedelta(minutes=30)
                 
-                # Check if we are in the exact minute of the reminder
                 if reminder_time <= now < (reminder_time + timedelta(minutes=1)):
                     notification.notify(
                         title=f"Class in 30 Mins!",
@@ -214,7 +204,6 @@ class StudentListScreen(MDScreen):
                 bg_color=(1, 1, 1, 1)
             )
             
-            # Load Photo safely
             if photo and os.path.exists(photo):
                 avatar = ImageLeftWidget(source=photo)
             else:
@@ -258,11 +247,10 @@ class AddEditScreen(MDScreen):
         self.ids.lbl_photo.text = "No photo selected"
         self.selected_photo_path = ""
         
-        # Init File Manager
         self.file_manager = MDFileManager(
             exit_manager=self.exit_manager,
             select_path=self.select_path,
-            preview=False, 
+            preview=False,
             ext=[".png", ".jpg", ".jpeg"] 
         )
 
@@ -272,16 +260,12 @@ class AddEditScreen(MDScreen):
             self.load_existing_data()
 
     def open_file_manager(self):
-        path = "."
-        if platform == "android":
-             # Pydroid safe path
-            path = "/storage/emulated/0/"
-            if not os.path.exists(path):
-                path = "."
+        path = "/storage/emulated/0/"
+        if not os.path.exists(path):
+            path = "." 
         self.file_manager.show(path)
 
     def select_path(self, path):
-        # COPY FILE to app folder (Important!)
         try:
             app_dir = os.path.dirname(os.path.abspath(__file__))
             dest_dir = os.path.join(app_dir, "student_photos")
@@ -295,7 +279,7 @@ class AddEditScreen(MDScreen):
             self.ids.lbl_photo.text = "Photo Selected"
             toast("Photo Saved")
         except Exception as e:
-            self.selected_photo_path = path # Fallback
+            self.selected_photo_path = path 
             self.ids.lbl_photo.text = "Photo Linked"
             
         self.exit_manager()
@@ -606,6 +590,7 @@ class TuitionManagerApp(MDApp):
         list_scr = StudentListScreen(name='list')
         layout = MDBoxLayout(orientation='vertical')
         
+        # FIX 1: REMOVED RADIUS FROM HEADER CARD
         header_card = MDCard(size_hint_y=None, height=dp(60), elevation=2, md_bg_color=self.theme_cls.primary_color)
         header_lbl = MDLabel(text="Tuition Manager", halign="center", font_style="H5", theme_text_color="Custom", text_color=(1,1,1,1), bold=True)
         header_card.add_widget(header_lbl)
@@ -665,7 +650,7 @@ class TuitionManagerApp(MDApp):
         det_scr = DetailScreen(name='detail')
         d_layout = MDBoxLayout(orientation='vertical', padding=dp(0), spacing=dp(10))
         
-        # --- Top Card ---
+        # --- Top Card FIX: Removed Radius causing crash ---
         top_card = MDCard(orientation="vertical", size_hint_y=None, height=dp(150), elevation=2, md_bg_color=self.theme_cls.primary_color, padding=dp(20))
         
         det_scr.ids["lbl_main_fee"] = MDLabel(text="DUE: 0", halign="center", font_style="H4", theme_text_color="Custom", text_color=(1,1,1,1), bold=True)
@@ -688,19 +673,18 @@ class TuitionManagerApp(MDApp):
         act_box.add_widget(MDRoundFlatButton(text="EDIT", icon="pencil", on_release=lambda x: det_scr.go_edit()))
         d_layout.add_widget(act_box)
 
-        # --- SMART CALENDAR CARD (ADAPTIVE HEIGHT) ---
+        # --- SMART CALENDAR CARD FIX: Removed MX and RADIUS ---
         cal_card = MDCard(
             orientation="vertical", 
             size_hint_y=None, 
             adaptive_height=True,
             padding=dp(8), 
-            size_hint_x=0.92,
+            size_hint_x=0.92, # Safe replacement for mx
             pos_hint={'center_x': 0.5},
             elevation=1
         )
         cal_card.add_widget(MDLabel(text="Attendance (This Month)", bold=True, size_hint_y=None, height=dp(20), halign="center"))
         
-        # 5 Columns for better button size
         det_scr.ids["cal_grid"] = MDGridLayout(cols=5, adaptive_height=True, spacing=dp(5), pos_hint={'center_x': 0.5})
         cal_card.add_widget(det_scr.ids["cal_grid"])
         
